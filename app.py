@@ -16,7 +16,7 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
         st.error("Vekttallene må summere til 100%!")
         return pd.DataFrame()
     
-    # Skaler undervekter (i desimalform for multiplikasjon)
+    # Skaler undervekter til desimal
     vekt_pris_ramme = (30 / 55) * (vekt_pris / 100)
     vekt_pris_prosjekt = (25 / 55) * (vekt_pris / 100)
     vekt_miljo_del1 = (20 / 30) * (vekt_miljo / 100)
@@ -40,7 +40,7 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
         p_kv = tilbyder['p_kv']
         p_gj = tilbyder['p_gj']
         
-        # Bruk evaluator med konfigurerbare vekter
+        # Beregn med konfigurerbare vekter
         r_score = calc_rammeavtale_score(
             p_pr, p_km1, p_km2, p_ko, p_kv, p_gj,
             vekt_pris_ramme=vekt_pris_ramme,
@@ -71,26 +71,24 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
             'p_ko': p_ko,
             'p_kv': p_kv,
             'p_gj': p_gj,
-            'r_score': round(r_score, 2),
-            'p_score': round(p_score, 2),
+            'r_score': r_score,
+            'p_score': p_score,
             'total_poeng': total
         })
     
     resultater.sort(key=lambda x: x['total_poeng'], reverse=True)
     return pd.DataFrame(resultater)
 
-# Resten av Streamlit-koden er lik tidligere, men med hjelpetekst
 st.title("Ventilasjonskalkulator - Simuler Prisstrategier")
 
 st.header("Justér vekttall for kategorier (må summere til 100%)")
 with st.expander("Hjelp: Vekttall"):
-    st.write("Endre disse for å simulere ulike anbudsstrategier. Default: Pris 55%, Miljø 30%, Kvalitet 15%.")
+    st.write("Endre disse for å simulere ulike anbudsstrategier. Default basert på kriterier.")
 col1, col2, col3 = st.columns(3)
-vekt_pris = col1.slider("Pris-vekt (%)", 0, 100, 55)
-vekt_miljo = col2.slider("Klima/Miljø-vekt (%)", 0, 100, 30)
-vekt_kvalitet = col3.slider("Kvalitet-vekt (%)", 0, 100, 15)
+vekt_pris = col1.slider("Pris-vekt (%)", 0, 100, 55, help="Total vekt for alle pris-elementer.")
+vekt_miljo = col2.slider("Klima/Miljø-vekt (%)", 0, 100, 30, help="Vekt for miljøpolicy og kjøretøy.")
+vekt_kvalitet = col3.slider("Kvalitet-vekt (%)", 0, 100, 15, help="Vekt for kompetanse, kvalitet og gjennomføring.")
 
-# Input-seksjon (lik tidligere, med validering)
 st.header("Legg inn data for tilbydere")
 if 'tilbydere' not in st.session_state:
     st.session_state.tilbydere = []
@@ -100,14 +98,14 @@ num_tilbydere = st.number_input("Antall tilbydere å legge inn", min_value=1, ma
 for i in range(num_tilbydere):
     with st.expander(f"Tilbyder {i+1}"):
         navn = st.text_input(f"Navn for tilbyder {i+1}", value=f"Tilbyder {i+1}")
-        pris_ramme = st.number_input(f"Pris rammeavtale for {navn}", min_value=0.0, value=500000.0)
-        pris_prosjekt = st.number_input(f"Pris prosjekt for {navn}", min_value=0.0, value=300000.0)
-        p_km1 = st.slider(f"P_km1 (Miljø del 1) for {navn}", 0, 100, 80)
-        p_ko = st.slider(f"P_ko (Kompetanse) for {navn}", 0, 100, 90)
-        p_kv = st.slider(f"P_kv (Kvalitet) for {navn}", 0, 100, 85)
-        p_gj = st.slider(f"P_gj (Gjennomføring) for {navn}", 0, 100, 92)
+        pris_ramme = st.number_input(f"Pris rammeavtale for {navn}", min_value=0.0, value=500000.0, help="Pris for rammeavtalen.")
+        pris_prosjekt = st.number_input(f"Pris prosjekt for {navn}", min_value=0.0, value=300000.0, help="Pris for spesifikt prosjekt.")
+        p_km1 = st.slider(f"P_km1 (Miljø del 1) for {navn}", 0, 100, 80, help="Poeng for bedriftens miljøpolicy.")
+        p_ko = st.slider(f"P_ko (Kompetanse) for {navn}", 0, 100, 90, help="Poeng for teamets kompetanse.")
+        p_kv = st.slider(f"P_kv (Kvalitet) for {navn}", 0, 100, 85, help="Poeng for bedriftens kvalitetssertifiseringer.")
+        p_gj = st.slider(f"P_gj (Gjennomføring) for {navn}", 0, 100, 92, help="Poeng for gjennomføringsevne.")
         
-        st.subheader("Kjøretøy-poeng (4 stk, 0-100)")
+        st.subheader("Kjøretøy-poeng (4 stk, 0-100)", help="Gjennomsnittspoeng basert på utslippsklasse.")
         col_k1, col_k2, col_k3, col_k4 = st.columns(4)
         k1 = col_k1.number_input("K1", min_value=0, max_value=100, value=100)
         k2 = col_k2.number_input("K2", min_value=0, max_value=100, value=80)
@@ -117,7 +115,7 @@ for i in range(num_tilbydere):
         
         if st.button(f"Lagre tilbyder {i+1}"):
             if pris_ramme <= 0 or pris_prosjekt <= 0:
-                st.error("Priser må være positive!")
+                st.error("Priser må være positive tall!")
             else:
                 st.session_state.tilbydere.append({
                     'navn': navn,
@@ -131,7 +129,6 @@ for i in range(num_tilbydere):
                 })
                 st.success(f"{navn} lagret!")
 
-# Beregn-knapp
 if st.button("Beregn poeng og ranger (simuler strategi)"):
     if st.session_state.tilbydere:
         resultater_df = beregn_poeng(st.session_state.tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet)
@@ -139,19 +136,21 @@ if st.button("Beregn poeng og ranger (simuler strategi)"):
             st.header("Beregnet resultater (rangert)")
             st.dataframe(resultater_df)
             
+            # Eksport til CSV
             csv = resultater_df.to_csv(index=False).encode('utf-8')
-            st.download_button("Last ned som CSV", csv, "resultater.csv", "text/csv")
+            st.download_button("Last ned resultater som CSV", csv, "resultater.csv", "text/csv")
             
+            # Eksport til TXT
             txt_content = "Rangert etter total poeng:\n"
             for _, row in resultater_df.iterrows():
                 txt_content += f"{row['navn']}:\n"
                 for col in resultater_df.columns[1:]:
                     txt_content += f"  {col}: {row[col]}\n"
                 txt_content += "\n"
-            st.download_button("Last ned som TXT", txt_content, "resultater.txt", "text/plain")
+            st.download_button("Last ned resultater som TXT", txt_content, "resultater.txt", "text/plain")
     else:
         st.warning("Legg inn minst én tilbyder først!")
 
-if st.button("Tilbakestill data"):
+if st.button("Tilbakestill alle data"):
     st.session_state.tilbydere = []
-    st.success("Data tilbakestilt!")
+    st.success("Alle data tilbakestilt!")
