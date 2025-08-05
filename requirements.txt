@@ -1,2 +1,3 @@
-# Avhengigheter for evaluering
-python-dotenv
+streamlit
+pandas
+pytest
