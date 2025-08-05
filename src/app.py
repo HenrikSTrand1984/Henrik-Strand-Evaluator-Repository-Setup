@@ -1,17 +1,22 @@
 import streamlit as st
 import pandas as pd
+import sys
+import os
+
+# Legg til src/ i sys.path for import
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+from evaluator import calc_rammeavtale_score, calc_prosjekt_score, calc_total_score
 
 def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
     """
-    Beregner poeng med dynamiske vekter.
-    Undervekter skalerer proporsjonalt til hovedvekter.
+    Beregner poeng med dynamiske vekter, ved bruk av evaluator-funksjoner.
     """
-    # Valider at vekter summerer til 100%
+    # Valider vekter
     if vekt_pris + vekt_miljo + vekt_kvalitet != 100:
         st.error("Vekttallene må summere til 100%!")
         return pd.DataFrame()
     
-    # Skaler undervekter (i prosent, så del på 100 for multiplikasjon)
+    # Skaler undervekter
     vekt_pris_ramme = (30 / 55) * (vekt_pris / 100)
     vekt_pris_prosjekt = (25 / 55) * (vekt_pris / 100)
     vekt_miljo_del1 = (20 / 30) * (vekt_miljo / 100)
@@ -20,7 +25,7 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
     vekt_kval_kval = (5 / 15) * (vekt_kvalitet / 100)
     vekt_kval_gj = (5 / 15) * (vekt_kvalitet / 100)
     
-    # Finn laveste priser for relativ beregning
+    # Finn laveste priser
     laveste_pris_ramme = min(t['pris_ramme'] for t in tilbydere) if tilbydere else 1
     laveste_pris_prosjekt = min(t['pris_prosjekt'] for t in tilbydere) if tilbydere else 1
     
@@ -35,11 +40,23 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
         p_kv = tilbyder['p_kv']
         p_gj = tilbyder['p_gj']
         
-        # Beregn med skalerte vekter
-        r_score = (p_pr * vekt_pris_ramme) + (p_km1 * vekt_miljo_del1) + (p_km2 * vekt_miljo_del2) + \
-                  (p_ko * vekt_kval_komp) + (p_kv * vekt_kval_kval) + (p_gj * vekt_kval_gj)
-        p_score = p_pp * vekt_pris_prosjekt
-        e_p = r_score + p_score
+        # Bruk evaluator-funksjoner med skalerte vekter (juster input til funksjonene for skalering)
+        # Merk: Siden evaluator bruker faste vekter, multipliserer vi poengene først med skalerte vekter
+        scaled_r_score = (
+            p_pr * vekt_pris_ramme +
+            p_km1 * vekt_miljo_del1 +
+            p_km2 * vekt_miljo_del2 +
+            p_ko * vekt_kval_komp +
+            p_kv * vekt_kval_kval +
+            p_gj * vekt_kval_gj
+        )
+        scaled_p_score = p_pp * vekt_pris_prosjekt
+        scaled_total = round(scaled_r_score + scaled_p_score, 2)
+        
+        # For referanse: Beregn også original (uten skalering) med evaluator
+        orig_r_score = calc_rammeavtale_score(p_pr, p_km1, p_km2, p_ko, p_kv, p_gj)
+        orig_p_score = calc_prosjekt_score(p_pp)
+        orig_total = calc_total_score(p_pr, p_km1, p_km2, p_ko, p_kv, p_gj, p_pp)
         
         resultater.append({
             'navn': tilbyder['navn'],
@@ -50,25 +67,28 @@ def beregn_poeng(tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet):
             'p_ko': p_ko,
             'p_kv': p_kv,
             'p_gj': p_gj,
-            'r_score': round(r_score, 2),
-            'p_score': round(p_score, 2),
-            'total_poeng': round(e_p, 2)
+            'r_score (orig)': round(orig_r_score, 2),
+            'p_score (orig)': round(orig_p_score, 2),
+            'total (orig)': orig_total,
+            'r_score (skalert)': round(scaled_r_score, 2),
+            'p_score (skalert)': round(scaled_p_score, 2),
+            'total (skalert)': scaled_total
         })
     
-    resultater.sort(key=lambda x: x['total_poeng'], reverse=True)
+    resultater.sort(key=lambda x: x['total (skalert)'], reverse=True)
     return pd.DataFrame(resultater)
 
-# Streamlit-app
+# Resten av Streamlit-koden (samme som før, med importert evaluator)
 st.title("Ventilasjonskalkulator - Simuler Prisstrategier")
 
-# Seksjon for vekter (sliders for simulering)
+# Seksjon for vekter
 st.header("Justér vekttall for kategorier (må summere til 100%)")
 col1, col2, col3 = st.columns(3)
 vekt_pris = col1.slider("Pris-vekt (%)", 0, 100, 55)
 vekt_miljo = col2.slider("Klima/Miljø-vekt (%)", 0, 100, 30)
 vekt_kvalitet = col3.slider("Kvalitet-vekt (%)", 0, 100, 15)
 
-# Seksjon for tilbyder-input
+# Seksjon for tilbyder-input (samme som før)
 st.header("Legg inn data for tilbydere")
 if 'tilbydere' not in st.session_state:
     st.session_state.tilbydere = []
@@ -85,7 +105,6 @@ for i in range(num_tilbydere):
         p_kv = st.slider(f"P_kv (Kvalitet) for {navn}", 0, 100, 85)
         p_gj = st.slider(f"P_gj (Gjennomføring) for {navn}", 0, 100, 92)
         
-        # Kjøretøy-poeng som 4 separate inputs
         st.subheader("Kjøretøy-poeng (4 stk, 0-100)")
         col_k1, col_k2, col_k3, col_k4 = st.columns(4)
         k1 = col_k1.number_input("K1", 0, 100, 100)
@@ -94,23 +113,20 @@ for i in range(num_tilbydere):
         k4 = col_k4.number_input("K4", 0, 100, 90)
         koyretøy_poeng = [k1, k2, k3, k4]
         
-        # Lagre tilbyder midlertidig
-        temp_tilbyder = {
-            'navn': navn,
-            'pris_ramme': pris_ramme,
-            'pris_prosjekt': pris_prosjekt,
-            'koyretøy_poeng': koyretøy_poeng,
-            'p_km1': p_km1,
-            'p_ko': p_ko,
-            'p_kv': p_kv,
-            'p_gj': p_gj
-        }
-        
         if st.button(f"Lagre tilbyder {i+1}"):
-            st.session_state.tilbydere.append(temp_tilbyder)
+            st.session_state.tilbydere.append({
+                'navn': navn,
+                'pris_ramme': pris_ramme,
+                'pris_prosjekt': pris_prosjekt,
+                'koyretøy_poeng': koyretøy_poeng,
+                'p_km1': p_km1,
+                'p_ko': p_ko,
+                'p_kv': p_kv,
+                'p_gj': p_gj
+            })
             st.success(f"{navn} lagret!")
 
-# Beregn og vis resultater
+# Beregn
 if st.button("Beregn poeng og ranger (simuler strategi)"):
     if st.session_state.tilbydere:
         resultater_df = beregn_poeng(st.session_state.tilbydere, vekt_pris, vekt_miljo, vekt_kvalitet)
@@ -118,9 +134,8 @@ if st.button("Beregn poeng og ranger (simuler strategi)"):
             st.header("Beregnet resultater (rangert)")
             st.dataframe(resultater_df)
             
-            # Eksport
             csv = resultater_df.to_csv(index=False).encode('utf-8')
-            st.download_button("Last ned resultater som CSV", csv, "resultater.csv", "text/csv")
+            st.download_button("Last ned som CSV", csv, "resultater.csv", "text/csv")
             
             txt_content = "Rangert etter total poeng:\n"
             for _, row in resultater_df.iterrows():
@@ -128,11 +143,10 @@ if st.button("Beregn poeng og ranger (simuler strategi)"):
                 for col in resultater_df.columns[1:]:
                     txt_content += f"  {col}: {row[col]}\n"
                 txt_content += "\n"
-            st.download_button("Last ned resultater som TXT", txt_content, "resultater.txt", "text/plain")
+            st.download_button("Last ned som TXT", txt_content, "resultater.txt", "text/plain")
     else:
         st.warning("Legg inn minst én tilbyder først!")
 
-# Tilbakestill-knapp
-if st.button("Tilbakestill alle data"):
+if st.button("Tilbakestill data"):
     st.session_state.tilbydere = []
     st.success("Data tilbakestilt!")
