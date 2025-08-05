@@ -1,1 +1,2 @@
-
+# Avhengigheter for evaluering
+python-dotenv
